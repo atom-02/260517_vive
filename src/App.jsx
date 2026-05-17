@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Search, Plus, MessageSquare, Image as ImageIcon, Camera, X, Send, Trash2, Edit2 } from 'lucide-react';
-import { db, storage } from './firebase';
+import { Menu, Search, Plus, MessageSquare, Image as ImageIcon, Camera, X, Send, Trash2, Edit2, LogOut } from 'lucide-react';
+import { db, storage, auth } from './firebase';
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
 import './App.css';
-
-// 테스트 유저 정보 (Mock User)
-const currentUser = {
-  id: 'user_01',
-  name: '테스트 학생',
-  avatar: 'T'
-};
 
 // 고등학교 수학 단원 키워드
 const keywords = ['전체보기', '수학(상/하)', '수학Ⅰ', '수학Ⅱ', '미적분', '확률과 통계', '기하'];
@@ -22,11 +17,8 @@ const notices = [
 ];
 
 function App() {
-  // 인트로 화면 상태
-  const [showIntro, setShowIntro] = useState(true);
-  
-  // 임시 인트로 배경 이미지 (나중에 사용자가 첨부해주면 이 부분을 교체할 예정)
-  const introBackgroundImage = "/image_intro.png";
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeKeyword, setActiveKeyword] = useState('전체보기');
@@ -50,23 +42,26 @@ function App() {
   // 로딩 상태 (이미지 업로드용)
   const [isUploading, setIsUploading] = useState(false);
 
+  // 사용자 인증 상태 확인
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser({
+          id: user.uid,
+          name: user.displayName || user.email.split('@')[0],
+          avatar: (user.displayName || user.email.split('@')[0])[0].toUpperCase()
+        });
+      } else {
+        // 로그인이 안 되어있으면 로그인 페이지로 이동
+        navigate('/');
+      }
+    });
+    return () => unsubscribe();
+  }, [navigate]);
+
   // 앱 로드 시 데이터 가져오기 (Firebase 연동)
   useEffect(() => {
-    if (!db) {
-      setPosts([
-        {
-          id: 'mock1',
-          userId: 'user_02',
-          userName: '수학천재',
-          text: '이 적분 문제 어떻게 푸는지 아시는 분 있나요? 부분적분 써도 잘 안 풀리네요 ㅠㅠ',
-          image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=500&q=80',
-          keyword: '미적분',
-          createdAt: new Date().toISOString(),
-          comments: []
-        }
-      ]);
-      return;
-    }
+    if (!db) return;
 
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -79,6 +74,15 @@ function App() {
 
     return () => unsubscribe();
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/');
+    } catch (error) {
+      console.error('로그아웃 실패', error);
+    }
+  };
 
   // 모달 열기 초기화
   const openWriteModal = () => {
@@ -119,11 +123,6 @@ function App() {
         try {
           await updateDoc(doc(db, 'posts', editingPostId), postData);
         } catch (e) { console.error('Error updating post: ', e); }
-      } else {
-        setPosts(posts.map(p => p.id === editingPostId ? { ...p, ...postData } : p));
-        if (selectedPost && selectedPost.id === editingPostId) {
-          setSelectedPost({ ...selectedPost, ...postData });
-        }
       }
     } else {
       const newPost = {
@@ -138,8 +137,6 @@ function App() {
         try {
           await addDoc(collection(db, 'posts'), newPost);
         } catch (e) { console.error('Error adding post: ', e); }
-      } else {
-        setPosts([ { ...newPost, id: Date.now().toString() }, ...posts ]);
       }
     }
 
@@ -157,11 +154,6 @@ function App() {
 
     if (db) {
       try { await deleteDoc(doc(db, 'posts', postId)); } catch (error) { console.error(error); }
-    } else {
-      setPosts(posts.filter(p => p.id !== postId));
-      if (selectedPost && selectedPost.id === postId) {
-        setIsDetailModalOpen(false);
-      }
     }
   };
 
@@ -217,10 +209,6 @@ function App() {
           comments: updatedComments
         });
       } catch(e) { console.error(e); }
-    } else {
-      const updatedPost = { ...selectedPost, comments: updatedComments };
-      setSelectedPost(updatedPost);
-      setPosts(posts.map(p => p.id === updatedPost.id ? updatedPost : p));
     }
     
     setNewCommentText('');
@@ -235,23 +223,8 @@ function App() {
     }
   };
 
-  // 인트로 화면 렌더링
-  if (showIntro) {
-    return (
-      <div className="intro-container" style={{
-        backgroundImage: `url('${introBackgroundImage}')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
-      }}>
-        <div className="intro-overlay">
-          <h1 className="intro-title">VIVE<span style={{ color: 'var(--primary)' }}>.</span></h1>
-          <p className="intro-subtitle">고등학생을 위한 스마트 수학 Q&A</p>
-          <button className="btn btn-primary intro-start-btn" onClick={() => setShowIntro(false)}>
-            시작하기
-          </button>
-        </div>
-      </div>
-    );
+  if (!currentUser) {
+    return <div style={{width:'100vw', height:'100vh', display:'flex', alignItems:'center', justifyContent:'center'}}>로딩중...</div>;
   }
 
   return (
@@ -287,6 +260,15 @@ function App() {
             </div>
           ))}
         </div>
+        
+        {/* 로그아웃 버튼 (모바일 사이드바 하단) */}
+        <button 
+          onClick={handleLogout} 
+          className="keyword-item" 
+          style={{ marginTop: '20px', color: 'var(--accent)' }}
+        >
+          <LogOut size={18} /> 로그아웃
+        </button>
       </aside>
 
       {/* 중앙: 질문 게시판 (메인 콘텐츠) */}
@@ -298,7 +280,12 @@ function App() {
             </button>
             VIVE <span style={{ color: 'var(--primary)', fontWeight: '900' }}>.</span>
           </div>
-          <div className="avatar">{currentUser.avatar}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+             <span style={{ fontSize: '0.9rem', fontWeight: 600, display: 'none', '@media(min-width: 768px)': { display: 'block' } }}>
+               {currentUser.name}님
+             </span>
+             <div className="avatar" title={currentUser.name}>{currentUser.avatar}</div>
+          </div>
         </header>
 
         <div className="feed-container">
@@ -357,6 +344,14 @@ function App() {
             <p style={{ fontWeight: 500, fontSize: '0.95rem' }}>{notice.title}</p>
           </div>
         ))}
+        {/* 데스크탑 로그아웃 버튼 */}
+        <button 
+          onClick={handleLogout} 
+          className="btn" 
+          style={{ marginTop: 'auto', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+        >
+          <LogOut size={16} /> 로그아웃
+        </button>
       </aside>
 
       {/* 모달: 글쓰기 및 수정 */}
