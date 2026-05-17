@@ -26,7 +26,7 @@ function App() {
   const [showIntro, setShowIntro] = useState(true);
   
   // 임시 인트로 배경 이미지 (나중에 사용자가 첨부해주면 이 부분을 교체할 예정)
-  const introBackgroundImage = "/Image_intro.png";
+  const introBackgroundImage = "/image_intro.png";
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeKeyword, setActiveKeyword] = useState('전체보기');
