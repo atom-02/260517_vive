@@ -1,3 +1,6 @@
+## 2026.05.17 지식샘터 강현수 강의
+   수학 Q&A 게시판, 로그인 후 사용
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
